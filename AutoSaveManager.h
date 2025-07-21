@@ -27,6 +27,8 @@ public:
     // Configuration
     void setAutoSaveInterval(int seconds);
     int getAutoSaveInterval() const;
+    void setTypingPauseInterval(int seconds);
+    int getTypingPauseInterval() const;
     void setEnabled(bool enabled);
     bool isEnabled() const;
     
@@ -37,6 +39,7 @@ public:
     
     // Manual operations
     void saveAll();
+    void saveAllOnExit();
     bool saveEditor(EditorWidget* editor);
     
     // Status
@@ -50,8 +53,9 @@ signals:
     void statusChanged(const QString& status);
 
 private slots:
-    void performAutoSave();
-    void onEditorModified();
+    void performAutoSave();        // Regular interval-based save (fallback)
+    void onTypingPaused();         // Triggered when user stops typing
+    void onEditorModified();       // Triggered when user types
     void onEditorDestroyed();
 
 private:
@@ -67,18 +71,24 @@ private:
         bool hasUnsavedChanges;
     };
     
-    QTimer* m_autoSaveTimer;
+    QTimer* m_autoSaveTimer;       // Regular interval timer (fallback)
+    QTimer* m_typingPauseTimer;    // Typing pause detection timer
     QHash<EditorWidget*, EditorInfo> m_trackedEditors;
     
     // Settings
-    int m_intervalSeconds;
+    int m_intervalSeconds;         // Regular auto-save interval
+    int m_typingPauseSeconds;      // Time to wait after typing stops
     bool m_enabled;
     QDateTime m_lastAutoSave;
     
     // Constants
-    static const int DEFAULT_INTERVAL = 300; // 5 minutes
-    static const int MIN_INTERVAL = 30;      // 30 seconds
-    static const int MAX_INTERVAL = 3600;    // 1 hour
+    static const int DEFAULT_INTERVAL = 300;        // 5 minutes (fallback timer)
+    static const int MIN_INTERVAL = 60;             // 1 minute minimum
+    static const int MAX_INTERVAL = 3600;           // 1 hour maximum
+    
+    static const int TYPING_PAUSE_INTERVAL = 10;    // 10 seconds after typing stops
+    static const int MIN_TYPING_PAUSE = 5;          // 5 seconds minimum
+    static const int MAX_TYPING_PAUSE = 60;         // 1 minute maximum
 };
 
 #endif // AUTOSAVEMANAGER_H

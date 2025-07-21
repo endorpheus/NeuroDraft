@@ -1,58 +1,4 @@
-void ProjectTreeWidget::showCustomContextMenu(const QPoint& pos)
-{
-    qDebug() << "showCustomContextMenu called at position:" << pos;
-    
-    QTreeWidgetItem* item = itemAt(pos);
-    if (!item) {
-        qDebug() << "No item at context menu position";
-        return;
-    }
-    
-    m_currentContextItem = item;
-    qDebug() << "Context menu on item:" << item->text(0) << "Type:" << item->type();
-    
-    QMenu* menu = nullptr;
-    
-    switch (item->type()) {
-        case ProjectItem:
-            menu = m_projectMenu;
-            qDebug() << "Using project menu";
-            break;
-        case ChaptersFolderItem:
-        case CharactersFolderItem:
-        case ResearchFolderItem:
-        case CorkboardFolderItem:
-            menu = m_folderMenu;
-            qDebug() << "Using folder menu";
-            break;
-        case ChapterItem:
-            menu = m_chapterMenu;
-            qDebug() << "Using chapter menu";
-            break;
-        case SubsectionItem:
-            menu = m_subsectionMenu;
-            qDebug() << "Using subsection menu";
-            break;
-        case CharacterItem:
-            menu = m_characterMenu;
-            qDebug() << "Using character menu";
-            break;
-        case ResearchItem:
-            menu = m_researchMenu;
-            qDebug() << "Using research menu";
-            break;
-        default:
-            qDebug() << "Unknown item type:" << item->type() << ", no menu";
-            break;
-    }
-    
-    if (menu) {
-        qDebug() << "Showing context menu with" << menu->actions().size() << "actions";
-        menu->exec(mapToGlobal(pos));
-    } else {
-        qDebug() << "No menu to show";
-    }
-}/*
+/*
  * NeuroDraft - Advanced Novel Writing Application
  * Concept and Development: Ryon Shane Hall
  * Built with Qt6 and C++20 for Linux
@@ -72,7 +18,6 @@ void ProjectTreeWidget::showCustomContextMenu(const QPoint& pos)
 ProjectTreeWidget::ProjectTreeWidget(QWidget *parent)
     : QTreeWidget(parent)
     , m_currentContextItem(nullptr)
-    , m_editingItem(nullptr)
     , m_dragDropEnabled(true)
 {
     setupContextMenus();
@@ -81,7 +26,7 @@ ProjectTreeWidget::ProjectTreeWidget(QWidget *parent)
     // Configure tree widget
     setHeaderLabel("Project Structure");
     
-    // IMPORTANT: Set context menu policy BEFORE other settings
+    // Set context menu policy
     setContextMenuPolicy(Qt::CustomContextMenu);
     connect(this, &QWidget::customContextMenuRequested, this, &ProjectTreeWidget::showCustomContextMenu);
     
@@ -93,7 +38,7 @@ ProjectTreeWidget::ProjectTreeWidget(QWidget *parent)
     setAcceptDrops(true);
     
     // Enable editing
-    setEditTriggers(QAbstractItemView::NoEditTriggers); // We'll control editing manually
+    setEditTriggers(QAbstractItemView::NoEditTriggers);
     
     // Make sure selection is visible
     setSelectionMode(QAbstractItemView::SingleSelection);
@@ -204,8 +149,6 @@ QTreeWidgetItem* ProjectTreeWidget::createChapterItem(const QString& chapterName
     item->setText(0, chapterName);
     item->setData(0, Qt::UserRole, filePath);
     
-    // TODO: Load subsections from file metadata
-    
     return item;
 }
 
@@ -213,7 +156,7 @@ QTreeWidgetItem* ProjectTreeWidget::createSubsectionItem(const QString& subsecti
 {
     QTreeWidgetItem* item = new QTreeWidgetItem(SubsectionItem);
     item->setText(0, subsectionTitle.isEmpty() ? QString("Section %1").arg(position) : subsectionTitle);
-    item->setData(0, Qt::UserRole + 1, position); // Store position
+    item->setData(0, Qt::UserRole + 1, position);
     
     return item;
 }
@@ -234,9 +177,11 @@ QTreeWidgetItem* ProjectTreeWidget::createResearchItem(const QString& researchNa
     return item;
 }
 
-void ProjectTreeWidget::contextMenuEvent(QContextMenuEvent* event)
+void ProjectTreeWidget::showCustomContextMenu(const QPoint& pos)
 {
-    QTreeWidgetItem* item = itemAt(event->pos());
+    qDebug() << "showCustomContextMenu called at position:" << pos;
+    
+    QTreeWidgetItem* item = itemAt(pos);
     if (!item) {
         qDebug() << "No item at context menu position";
         return;
@@ -250,41 +195,73 @@ void ProjectTreeWidget::contextMenuEvent(QContextMenuEvent* event)
     switch (item->type()) {
         case ProjectItem:
             menu = m_projectMenu;
-            qDebug() << "Using project menu";
             break;
         case ChaptersFolderItem:
         case CharactersFolderItem:
         case ResearchFolderItem:
         case CorkboardFolderItem:
             menu = m_folderMenu;
-            qDebug() << "Using folder menu";
             break;
         case ChapterItem:
             menu = m_chapterMenu;
-            qDebug() << "Using chapter menu";
             break;
         case SubsectionItem:
             menu = m_subsectionMenu;
-            qDebug() << "Using subsection menu";
             break;
         case CharacterItem:
             menu = m_characterMenu;
-            qDebug() << "Using character menu";
             break;
         case ResearchItem:
             menu = m_researchMenu;
-            qDebug() << "Using research menu";
             break;
         default:
-            qDebug() << "Unknown item type, no menu";
+            qDebug() << "Unknown item type:" << item->type();
             break;
     }
     
     if (menu) {
-        qDebug() << "Showing context menu";
+        qDebug() << "Showing context menu with" << menu->actions().size() << "actions";
+        menu->exec(mapToGlobal(pos));
+    }
+}
+
+void ProjectTreeWidget::contextMenuEvent(QContextMenuEvent* event)
+{
+    QTreeWidgetItem* item = itemAt(event->pos());
+    if (!item) {
+        return;
+    }
+    
+    m_currentContextItem = item;
+    
+    QMenu* menu = nullptr;
+    
+    switch (item->type()) {
+        case ProjectItem:
+            menu = m_projectMenu;
+            break;
+        case ChaptersFolderItem:
+        case CharactersFolderItem:
+        case ResearchFolderItem:
+        case CorkboardFolderItem:
+            menu = m_folderMenu;
+            break;
+        case ChapterItem:
+            menu = m_chapterMenu;
+            break;
+        case SubsectionItem:
+            menu = m_subsectionMenu;
+            break;
+        case CharacterItem:
+            menu = m_characterMenu;
+            break;
+        case ResearchItem:
+            menu = m_researchMenu;
+            break;
+    }
+    
+    if (menu) {
         menu->exec(event->globalPos());
-    } else {
-        qDebug() << "No menu to show";
     }
 }
 
@@ -303,7 +280,6 @@ void ProjectTreeWidget::onItemDoubleClicked(QTreeWidgetItem* item, int column)
             emit itemOpenRequested(filePath);
             break;
         case SubsectionItem:
-            // Get parent chapter path and subsection position
             if (item->parent() && item->parent()->type() == ChapterItem) {
                 QString chapterPath = item->parent()->data(0, Qt::UserRole).toString();
                 QString subsectionTitle = item->text(0);
@@ -319,7 +295,6 @@ void ProjectTreeWidget::onItemDoubleClicked(QTreeWidgetItem* item, int column)
 
 void ProjectTreeWidget::onItemSelectionChanged()
 {
-    // Update action states based on selection
     QTreeWidgetItem* current = currentItem();
     bool hasSelection = (current != nullptr);
     
@@ -337,10 +312,15 @@ void ProjectTreeWidget::onItemSelectionChanged()
     }
 }
 
+void ProjectTreeWidget::onItemChanged(QTreeWidgetItem* item, int column)
+{
+    Q_UNUSED(item)
+    Q_UNUSED(column)
+    // Using dialog-based renaming instead of inline editing
+}
+
 void ProjectTreeWidget::setupContextMenus()
 {
-    qDebug() << "Setting up context menus";
-    
     // Create actions
     m_newChapterAction = new QAction("New Chapter", this);
     connect(m_newChapterAction, &QAction::triggered, this, &ProjectTreeWidget::createNewChapter);
@@ -356,7 +336,6 @@ void ProjectTreeWidget::setupContextMenus()
     
     m_renameAction = new QAction("Rename", this);
     connect(m_renameAction, &QAction::triggered, this, &ProjectTreeWidget::renameItem);
-    qDebug() << "Created rename action and connected it";
     
     m_deleteAction = new QAction("Delete", this);
     connect(m_deleteAction, &QAction::triggered, this, &ProjectTreeWidget::deleteItem);
@@ -401,23 +380,16 @@ void ProjectTreeWidget::setupContextMenus()
     m_researchMenu = new QMenu(this);
     m_researchMenu->addAction(m_renameAction);
     m_researchMenu->addAction(m_deleteAction);
-    
-    qDebug() << "Context menus setup complete";
 }
 
 void ProjectTreeWidget::setupDragDrop()
 {
-    // Configure drag and drop with explicit settings
     setDragEnabled(true);
     setAcceptDrops(true);
     setDropIndicatorShown(true);
     setDragDropMode(QAbstractItemView::InternalMove);
     setDefaultDropAction(Qt::MoveAction);
-    
-    // Set drag drop overwrite mode to false so items are inserted
     setDragDropOverwriteMode(false);
-    
-    // Enable auto-scroll during drag
     setAutoScroll(true);
     setAutoScrollMargin(16);
 }
@@ -454,7 +426,6 @@ void ProjectTreeWidget::populateChapters(QTreeWidgetItem* chaptersFolder, const 
         return;
     }
     
-    // Get chapter files
     QStringList filters;
     filters << "*.md" << "*.txt";
     QFileInfoList files = chaptersDir.entryInfoList(filters, QDir::Files, QDir::Name);
@@ -463,8 +434,6 @@ void ProjectTreeWidget::populateChapters(QTreeWidgetItem* chaptersFolder, const 
         QTreeWidgetItem* chapterItem = createChapterItem(fileInfo.baseName(), fileInfo.absoluteFilePath());
         chaptersFolder->addChild(chapterItem);
         
-        // TODO: Load subsections from chapter file metadata
-        // For now, create placeholder subsections
         chapterItem->addChild(createSubsectionItem("Beginning", 1));
         chapterItem->addChild(createSubsectionItem("Middle", 2));
         chapterItem->addChild(createSubsectionItem("End", 3));
@@ -474,9 +443,6 @@ void ProjectTreeWidget::populateChapters(QTreeWidgetItem* chaptersFolder, const 
 void ProjectTreeWidget::populateCharacters(QTreeWidgetItem* charactersFolder, const QString& projectPath)
 {
     Q_UNUSED(projectPath)
-    
-    // TODO: Load character profiles from characters.json or individual files
-    // For now, create placeholder characters
     charactersFolder->addChild(createCharacterItem("Main Character"));
     charactersFolder->addChild(createCharacterItem("Supporting Character"));
 }
@@ -490,7 +456,6 @@ void ProjectTreeWidget::populateResearch(QTreeWidgetItem* researchFolder, const 
         return;
     }
     
-    // Get research files
     QStringList filters;
     filters << "*.md" << "*.txt" << "*.pdf" << "*.doc" << "*.docx";
     QFileInfoList files = researchDir.entryInfoList(filters, QDir::Files, QDir::Name);
@@ -506,8 +471,6 @@ void ProjectTreeWidget::populateCorkboard(QTreeWidgetItem* corkboardFolder, cons
 {
     Q_UNUSED(projectPath)
     
-    // TODO: Load corkboard notes from corkboard.json
-    // For now, create placeholder items
     QTreeWidgetItem* plotIdeas = new QTreeWidgetItem(CorkboardItem);
     plotIdeas->setText(0, "Plot Ideas");
     corkboardFolder->addChild(plotIdeas);
@@ -532,7 +495,6 @@ QString ProjectTreeWidget::getProjectPath(QTreeWidgetItem* item) const
         return QString();
     }
     
-    // Walk up the tree to find the project item
     QTreeWidgetItem* current = item;
     while (current && current->type() != ProjectItem) {
         current = current->parent();
@@ -574,23 +536,17 @@ bool ProjectTreeWidget::canDropOn(QTreeWidgetItem* target, ItemType sourceType) 
     
     switch (target->type()) {
         case ProjectItem:
-            return false; // Can't drop directly on project
-            
+            return false;
         case ChaptersFolderItem:
-            return (sourceType == ChapterItem); // Chapters can be dropped on chapters folder
-            
+            return (sourceType == ChapterItem);
         case ChapterItem:
-            return (sourceType == SubsectionItem || sourceType == ChapterItem); // Subsections and chapters can be dropped on chapters
-            
+            return (sourceType == SubsectionItem || sourceType == ChapterItem);
         case CharactersFolderItem:
             return (sourceType == CharacterItem);
-            
         case ResearchFolderItem:
             return (sourceType == ResearchItem);
-            
         case CorkboardFolderItem:
             return (sourceType == CorkboardItem);
-            
         default:
             return false;
     }
@@ -601,9 +557,7 @@ void ProjectTreeWidget::updateChapterNumbers(QTreeWidgetItem* chaptersFolder)
     if (!chaptersFolder || chaptersFolder->type() != ChaptersFolderItem) {
         return;
     }
-    
     // TODO: Implement chapter renumbering logic
-    // This would update chapter file names and internal references
 }
 
 void ProjectTreeWidget::saveTreeState()
@@ -616,7 +570,6 @@ void ProjectTreeWidget::restoreTreeState()
     // TODO: Restore expansion state and project list from settings
 }
 
-// Slot implementations
 void ProjectTreeWidget::createNewChapter()
 {
     if (!m_currentContextItem) {
@@ -687,82 +640,76 @@ void ProjectTreeWidget::createNewResearch()
 
 void ProjectTreeWidget::renameItem()
 {
-    qDebug() << "renameItem() called";
-    
     if (!m_currentContextItem) {
-        qDebug() << "No current context item";
         return;
     }
-    
-    qDebug() << "Current item:" << m_currentContextItem->text(0) << "Type:" << m_currentContextItem->type();
     
     // Only allow renaming of certain item types
     ItemType itemType = static_cast<ItemType>(m_currentContextItem->type());
     if (itemType == ProjectItem || itemType == ChaptersFolderItem || 
         itemType == CharactersFolderItem || itemType == ResearchFolderItem || 
         itemType == CorkboardFolderItem) {
-        qDebug() << "Item type not renameable:" << itemType;
-        return; // Don't allow renaming of these types
-    }
-    
-    qDebug() << "Starting inline edit for item:" << m_currentContextItem->text(0);
-    startInlineEdit(m_currentContextItem);
-}
-
-void ProjectTreeWidget::startInlineEdit(QTreeWidgetItem* item)
-{
-    if (!item) {
         return;
     }
     
-    m_editingItem = item;
-    m_originalItemText = item->text(0);
+    QString currentName = m_currentContextItem->text(0);
+    QString itemTypeName;
     
-    // Make the item editable
-    item->setFlags(item->flags() | Qt::ItemIsEditable);
+    switch (itemType) {
+        case ChapterItem:
+            itemTypeName = "Chapter";
+            break;
+        case SubsectionItem:
+            itemTypeName = "Subsection";
+            break;
+        case CharacterItem:
+            itemTypeName = "Character";
+            break;
+        case ResearchItem:
+            itemTypeName = "Research Item";
+            break;
+        default:
+            itemTypeName = "Item";
+            break;
+    }
     
-    // Start editing
-    editItem(item, 0);
+    bool ok;
+    QString newName = QInputDialog::getText(this, 
+                                           QString("Rename %1").arg(itemTypeName),
+                                           QString("Enter new name for %1:").arg(itemTypeName),
+                                           QLineEdit::Normal,
+                                           currentName,
+                                           &ok);
     
-    qDebug() << "Started editing item:" << m_originalItemText;
-}
-
-void ProjectTreeWidget::onItemChanged(QTreeWidgetItem* item, int column)
-{
-    if (column != 0 || item != m_editingItem) {
+    if (!ok || newName.trimmed().isEmpty()) {
         return;
     }
     
-    QString newName = item->text(0).trimmed();
-    qDebug() << "Item changed from" << m_originalItemText << "to" << newName;
+    newName = newName.trimmed();
     
-    // Validate the new name
-    if (!validateItemName(item, newName)) {
-        // Invalid name - suggest alternative
-        QString suggestion = suggestAlternativeName(item, newName);
-        item->setText(0, suggestion);
+    if (newName == currentName) {
+        return;
+    }
+    
+    if (!validateItemName(m_currentContextItem, newName)) {
+        QString suggestion = suggestAlternativeName(m_currentContextItem, newName);
+        
+        int ret = QMessageBox::question(this, "Name Conflict", 
+            QString("The name '%1' already exists. Use '%2' instead?")
+            .arg(newName).arg(suggestion),
+            QMessageBox::Yes | QMessageBox::No);
+        
+        if (ret != QMessageBox::Yes) {
+            return;
+        }
+        
         newName = suggestion;
-        
-        QMessageBox::information(this, "Name Conflict", 
-            QString("The name '%1' already exists. Changed to '%2'.")
-            .arg(m_originalItemText).arg(suggestion));
     }
     
-    // Make item non-editable again
-    item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+    m_currentContextItem->setText(0, newName);
     
-    // Emit signal if name actually changed
-    if (newName != m_originalItemText) {
-        ItemType itemType = static_cast<ItemType>(item->type());
-        QString filePath = getItemPath(item);
-        
-        emit itemRenamed(m_originalItemText, newName, itemType, filePath);
-        qDebug() << "Emitted itemRenamed signal:" << m_originalItemText << "->" << newName;
-    }
-    
-    // Clear editing state
-    m_editingItem = nullptr;
-    m_originalItemText.clear();
+    QString filePath = getItemPath(m_currentContextItem);
+    emit itemRenamed(currentName, newName, itemType, filePath);
 }
 
 bool ProjectTreeWidget::validateItemName(QTreeWidgetItem* item, const QString& newName)
@@ -771,7 +718,6 @@ bool ProjectTreeWidget::validateItemName(QTreeWidgetItem* item, const QString& n
         return false;
     }
     
-    // Check for duplicates among siblings
     QTreeWidgetItem* parent = item->parent();
     if (!parent) {
         parent = invisibleRootItem();
@@ -780,7 +726,7 @@ bool ProjectTreeWidget::validateItemName(QTreeWidgetItem* item, const QString& n
     for (int i = 0; i < parent->childCount(); ++i) {
         QTreeWidgetItem* sibling = parent->child(i);
         if (sibling != item && sibling->text(0).trimmed() == newName) {
-            return false; // Duplicate found
+            return false;
         }
     }
     
@@ -794,7 +740,6 @@ QString ProjectTreeWidget::suggestAlternativeName(QTreeWidgetItem* item, const Q
         cleanBase = "Untitled";
     }
     
-    // Try numbered variations
     for (int i = 2; i <= 100; ++i) {
         QString suggestion = QString("%1 (%2)").arg(cleanBase).arg(i);
         if (validateItemName(item, suggestion)) {
@@ -802,7 +747,6 @@ QString ProjectTreeWidget::suggestAlternativeName(QTreeWidgetItem* item, const Q
         }
     }
     
-    // Fallback with timestamp
     QString timestamp = QDateTime::currentDateTime().toString("hhmmss");
     return QString("%1_%2").arg(cleanBase).arg(timestamp);
 }
@@ -824,7 +768,6 @@ void ProjectTreeWidget::deleteItem()
         
         emit itemDeleted(itemPath, itemType);
         
-        // Remove from tree
         delete m_currentContextItem;
         m_currentContextItem = nullptr;
     }
@@ -844,7 +787,6 @@ void ProjectTreeWidget::moveItemUp()
         parent->insertChild(currentIndex - 1, item);
         setCurrentItem(item);
         
-        // Update chapter numbers if needed
         if (parent->type() == ChaptersFolderItem) {
             updateChapterNumbers(parent);
         }
@@ -865,14 +807,12 @@ void ProjectTreeWidget::moveItemDown()
         parent->insertChild(currentIndex + 1, item);
         setCurrentItem(item);
         
-        // Update chapter numbers if needed
         if (parent->type() == ChaptersFolderItem) {
             updateChapterNumbers(parent);
         }
     }
 }
 
-// Drag and drop implementation
 void ProjectTreeWidget::dropEvent(QDropEvent* event)
 {
     QTreeWidgetItem* draggedItem = currentItem();
@@ -881,27 +821,18 @@ void ProjectTreeWidget::dropEvent(QDropEvent* event)
         return;
     }
     
-    // Store the original parent and index
     QTreeWidgetItem* originalParent = draggedItem->parent();
     int originalIndex = originalParent ? originalParent->indexOfChild(draggedItem) : indexOfTopLevelItem(draggedItem);
     
-    // Let Qt handle the visual drop first
     QTreeWidget::dropEvent(event);
     
-    // Now check what actually happened
     QTreeWidgetItem* newParent = draggedItem->parent();
     int newIndex = newParent ? newParent->indexOfChild(draggedItem) : indexOfTopLevelItem(draggedItem);
     
-    qDebug() << "Item moved:" << draggedItem->text(0);
-    qDebug() << "From parent:" << (originalParent ? originalParent->text(0) : "root") << "index:" << originalIndex;
-    qDebug() << "To parent:" << (newParent ? newParent->text(0) : "root") << "index:" << newIndex;
-    
-    // Handle chapter reordering
     if (draggedItem->type() == ChapterItem && 
         newParent && newParent->type() == ChaptersFolderItem &&
         originalParent == newParent && originalIndex != newIndex) {
         
-        qDebug() << "Chapter reordered from" << originalIndex << "to" << newIndex;
         emit itemMoved(QString::number(originalIndex), QString::number(newIndex), ChapterItem);
     }
     
@@ -913,14 +844,10 @@ void ProjectTreeWidget::dragMoveEvent(QDragMoveEvent* event)
     QTreeWidgetItem* item = itemAt(event->position().toPoint());
     
     if (item) {
-        // Show where the drop will happen
         setDropIndicatorShown(true);
         
-        // Allow the drop if it's a valid target
         if (item->type() == ChaptersFolderItem || item->type() == ChapterItem) {
             event->acceptProposedAction();
-            
-            // Force update to show the drop indicator
             update();
         } else {
             event->ignore();
@@ -929,7 +856,6 @@ void ProjectTreeWidget::dragMoveEvent(QDragMoveEvent* event)
         event->ignore();
     }
     
-    // Call base implementation to handle the visual indicator
     QTreeWidget::dragMoveEvent(event);
 }
 

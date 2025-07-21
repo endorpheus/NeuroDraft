@@ -52,7 +52,6 @@ public:
     // Tree operations
     void expandProject(const QString& projectPath);
     void collapseProject(const QString& projectPath);
-    void startInlineEdit(QTreeWidgetItem* item);
     bool validateItemName(QTreeWidgetItem* item, const QString& newName);
     QString suggestAlternativeName(QTreeWidgetItem* item, const QString& baseName);
     
@@ -132,8 +131,6 @@ private:
     // State tracking
     QHash<QString, QTreeWidgetItem*> m_projectItems;
     QTreeWidgetItem* m_currentContextItem;
-    QTreeWidgetItem* m_editingItem;
-    QString m_originalItemText;
     bool m_dragDropEnabled;
     
     // Project managers for each open project

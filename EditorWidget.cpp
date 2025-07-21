@@ -214,25 +214,53 @@ void EditorWidget::setupStatusBar()
     m_targetLabel = new QLabel("Target: Not set", this);
     m_filePathLabel = new QLabel("Untitled", this);
     
-    // Style labels
-    QString labelStyle = "padding: 2px 8px; border-right: 1px solid #ccc;";
+    // Improved styling with better visibility
+    QString labelStyle = "QLabel { "
+                        "padding: 4px 8px; "
+                        "border-right: 1px solid #bbb; "
+                        "background-color: #f8f8f8; "
+                        "color: #333; "
+                        "font-size: 11px; "
+                        "font-weight: bold; "
+                        "}";
+    
+    QString filePathStyle = "QLabel { "
+                           "padding: 4px 8px; "
+                           "background-color: #f8f8f8; "
+                           "color: #666; "
+                           "font-size: 11px; "
+                           "font-style: italic; "
+                           "}";
+    
     m_wordCountLabel->setStyleSheet(labelStyle);
     m_characterCountLabel->setStyleSheet(labelStyle);
     m_targetLabel->setStyleSheet(labelStyle);
-    m_filePathLabel->setStyleSheet("padding: 2px 8px; font-style: italic; color: #666;");
+    m_filePathLabel->setStyleSheet(filePathStyle);
     
-    // Create fresh status layout
+    // Set minimum height for better visibility
+    m_wordCountLabel->setMinimumHeight(24);
+    m_characterCountLabel->setMinimumHeight(24);
+    m_targetLabel->setMinimumHeight(24);
+    m_filePathLabel->setMinimumHeight(24);
+    
+    // Create fresh status layout with better spacing
     m_statusLayout = new QHBoxLayout();
+    m_statusLayout->setContentsMargins(0, 0, 0, 0);
+    m_statusLayout->setSpacing(0);
     m_statusLayout->addWidget(m_wordCountLabel);
     m_statusLayout->addWidget(m_characterCountLabel);
     m_statusLayout->addWidget(m_targetLabel);
     m_statusLayout->addStretch();
     m_statusLayout->addWidget(m_filePathLabel);
     
-    // Create status widget container
+    // Create status widget container with improved styling
     QWidget* statusWidget = new QWidget(this);
-    statusWidget->setStyleSheet("background-color: #f5f5f5; border-top: 1px solid #ccc;");
-    statusWidget->setFixedHeight(25);
+    statusWidget->setStyleSheet("QWidget { "
+                               "background-color: #f0f0f0; "
+                               "border-top: 2px solid #ddd; "
+                               "border-bottom: 1px solid #ccc; "
+                               "}");
+    statusWidget->setFixedHeight(28);  // Increased height for better visibility
     statusWidget->setLayout(m_statusLayout);
     
     m_mainLayout->addWidget(statusWidget);
@@ -522,15 +550,15 @@ void EditorWidget::updateStatusBar()
         
         // Color-code based on progress
         if (percentage >= 100.0) {
-            m_targetLabel->setStyleSheet("padding: 2px 8px; border-right: 1px solid #ccc; color: #4caf50; font-weight: bold;");
+            m_targetLabel->setStyleSheet("QLabel { padding: 4px 8px; border-right: 1px solid #bbb; background-color: #f8f8f8; color: #4caf50; font-size: 11px; font-weight: bold; }");
         } else if (percentage >= 75.0) {
-            m_targetLabel->setStyleSheet("padding: 2px 8px; border-right: 1px solid #ccc; color: #ff9800;");
+            m_targetLabel->setStyleSheet("QLabel { padding: 4px 8px; border-right: 1px solid #bbb; background-color: #f8f8f8; color: #ff9800; font-size: 11px; font-weight: bold; }");
         } else {
-            m_targetLabel->setStyleSheet("padding: 2px 8px; border-right: 1px solid #ccc; color: #f44336;");
+            m_targetLabel->setStyleSheet("QLabel { padding: 4px 8px; border-right: 1px solid #bbb; background-color: #f8f8f8; color: #f44336; font-size: 11px; font-weight: bold; }");
         }
     } else {
         m_targetLabel->setText("Target: Not set");
-        m_targetLabel->setStyleSheet("padding: 2px 8px; border-right: 1px solid #ccc;");
+        m_targetLabel->setStyleSheet("QLabel { padding: 4px 8px; border-right: 1px solid #bbb; background-color: #f8f8f8; color: #333; font-size: 11px; font-weight: bold; }");
     }
 }
 

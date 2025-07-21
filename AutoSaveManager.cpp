@@ -12,17 +12,23 @@
 AutoSaveManager::AutoSaveManager(QObject *parent)
     : QObject(parent)
     , m_autoSaveTimer(new QTimer(this))
+    , m_typingPauseTimer(new QTimer(this))
     , m_intervalSeconds(DEFAULT_INTERVAL)
+    , m_typingPauseSeconds(TYPING_PAUSE_INTERVAL)
     , m_enabled(true)
 {
-    // Setup timer
+    // Setup regular auto-save timer (fallback)
     m_autoSaveTimer->setSingleShot(false);
     connect(m_autoSaveTimer, &QTimer::timeout, this, &AutoSaveManager::performAutoSave);
+    
+    // Setup typing pause detection timer
+    m_typingPauseTimer->setSingleShot(true);
+    connect(m_typingPauseTimer, &QTimer::timeout, this, &AutoSaveManager::onTypingPaused);
     
     // Load settings
     loadSettings();
     
-    // Start timer if enabled
+    // Start regular timer if enabled (as backup)
     if (m_enabled) {
         m_autoSaveTimer->start(m_intervalSeconds * 1000);
     }
@@ -56,6 +62,23 @@ int AutoSaveManager::getAutoSaveInterval() const
     return m_intervalSeconds;
 }
 
+void AutoSaveManager::setTypingPauseInterval(int seconds)
+{
+    if (seconds < MIN_TYPING_PAUSE || seconds > MAX_TYPING_PAUSE) {
+        qWarning() << "Typing pause interval out of range:" << seconds;
+        return;
+    }
+    
+    m_typingPauseSeconds = seconds;
+    saveSettings();
+    emit statusChanged(QString("Typing pause auto-save set to %1 seconds").arg(seconds));
+}
+
+int AutoSaveManager::getTypingPauseInterval() const
+{
+    return m_typingPauseSeconds;
+}
+
 void AutoSaveManager::setEnabled(bool enabled)
 {
     m_enabled = enabled;
@@ -65,6 +88,7 @@ void AutoSaveManager::setEnabled(bool enabled)
         emit statusChanged("Auto-save enabled");
     } else {
         m_autoSaveTimer->stop();
+        m_typingPauseTimer->stop();
         emit statusChanged("Auto-save disabled");
     }
     
@@ -90,7 +114,7 @@ void AutoSaveManager::registerEditor(EditorWidget* editor, const QString& filePa
     
     m_trackedEditors[editor] = info;
     
-    // Connect to editor signals
+    // Connect to editor signals for typing detection
     connect(editor, &EditorWidget::contentChanged, this, &AutoSaveManager::onEditorModified);
     connect(editor, &QObject::destroyed, this, &AutoSaveManager::onEditorDestroyed);
     
@@ -129,7 +153,31 @@ void AutoSaveManager::saveAll()
     if (savedCount > 0) {
         m_lastAutoSave = QDateTime::currentDateTime();
         emit autoSaveCompleted(savedCount);
-        emit statusChanged(QString("Saved %1 files").arg(savedCount));
+        emit statusChanged(QString("Auto-saved %1 files after typing pause").arg(savedCount));
+        qDebug() << "Auto-saved" << savedCount << "files after typing pause";
+    }
+}
+
+void AutoSaveManager::saveAllOnExit()
+{
+    qDebug() << "Saving all files on exit...";
+    
+    int savedCount = 0;
+    int totalEditors = m_trackedEditors.size();
+    
+    // Save all tracked editors, regardless of whether they have changes
+    // This ensures no data is lost on exit
+    for (auto it = m_trackedEditors.begin(); it != m_trackedEditors.end(); ++it) {
+        EditorWidget* editor = it.key();
+        if (editor && saveEditor(editor)) {
+            savedCount++;
+        }
+    }
+    
+    qDebug() << "Exit save completed:" << savedCount << "of" << totalEditors << "files saved";
+    
+    if (savedCount > 0) {
+        emit statusChanged(QString("Exit: Saved %1 files").arg(savedCount));
     }
 }
 
@@ -183,15 +231,53 @@ void AutoSaveManager::performAutoSave()
         return;
     }
     
-    saveAll();
+    // This is the regular interval-based auto-save (fallback)
+    int savedCount = 0;
+    for (auto it = m_trackedEditors.begin(); it != m_trackedEditors.end(); ++it) {
+        if (needsSaving(it.key())) {
+            if (saveEditor(it.key())) {
+                savedCount++;
+            }
+        }
+    }
+    
+    if (savedCount > 0) {
+        m_lastAutoSave = QDateTime::currentDateTime();
+        emit autoSaveCompleted(savedCount);
+        emit statusChanged(QString("Auto-saved %1 files (interval)").arg(savedCount));
+        qDebug() << "Interval auto-save completed:" << savedCount << "files";
+    }
 }
 
 void AutoSaveManager::onEditorModified()
 {
+    if (!m_enabled) {
+        return;
+    }
+    
     EditorWidget* editor = qobject_cast<EditorWidget*>(sender());
     if (editor && m_trackedEditors.contains(editor)) {
         m_trackedEditors[editor].hasUnsavedChanges = true;
+        
+        // Reset the typing pause timer every time the user types
+        // This creates the "countdown after stopping typing" behavior
+        m_typingPauseTimer->stop();
+        m_typingPauseTimer->start(m_typingPauseSeconds * 1000);
+        
+        qDebug() << "User typing detected, restarting" << m_typingPauseSeconds << "second countdown";
     }
+}
+
+void AutoSaveManager::onTypingPaused()
+{
+    if (!m_enabled) {
+        return;
+    }
+    
+    qDebug() << "Typing pause detected, triggering auto-save...";
+    
+    // Save all files that have unsaved changes
+    saveAll();
 }
 
 void AutoSaveManager::onEditorDestroyed()
@@ -208,11 +294,16 @@ void AutoSaveManager::loadSettings()
     settings.beginGroup("AutoSave");
     
     m_intervalSeconds = settings.value("interval", DEFAULT_INTERVAL).toInt();
+    m_typingPauseSeconds = settings.value("typingPause", TYPING_PAUSE_INTERVAL).toInt();
     m_enabled = settings.value("enabled", true).toBool();
     
-    // Validate interval
+    // Validate intervals
     if (m_intervalSeconds < MIN_INTERVAL || m_intervalSeconds > MAX_INTERVAL) {
         m_intervalSeconds = DEFAULT_INTERVAL;
+    }
+    
+    if (m_typingPauseSeconds < MIN_TYPING_PAUSE || m_typingPauseSeconds > MAX_TYPING_PAUSE) {
+        m_typingPauseSeconds = TYPING_PAUSE_INTERVAL;
     }
     
     settings.endGroup();
@@ -224,6 +315,7 @@ void AutoSaveManager::saveSettings()
     settings.beginGroup("AutoSave");
     
     settings.setValue("interval", m_intervalSeconds);
+    settings.setValue("typingPause", m_typingPauseSeconds);
     settings.setValue("enabled", m_enabled);
     
     settings.endGroup();

@@ -20,6 +20,8 @@
 #include <QFontDialog>
 #include <QInputDialog>
 #include <QRegularExpression>
+#include <QDir>
+#include <QFile>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -57,7 +59,13 @@ MainWindow::MainWindow(QWidget *parent)
     m_mainSplitter->setStretchFactor(2, 0);  // Right pane - fixed proportion
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() 
+{
+    // Save all files on exit to prevent data loss
+    if (m_autoSaveManager) {
+        m_autoSaveManager->saveAllOnExit();
+    }
+}
 
 void MainWindow::setupUI()
 {
@@ -92,8 +100,6 @@ void MainWindow::setupUI()
     connect(m_rightPane, &DraggableTabWidget::tabDetached, this, &MainWindow::onTabDetached);
     connect(m_rightPane, &DraggableTabWidget::tabAttachRequested, this, &MainWindow::onTabAttachRequested);
     
-    // Add placeholder tabs to left and right panes
-    
     // Create and add project tree
     m_projectTree = new ProjectTreeWidget(this);
     connect(m_projectTree, &ProjectTreeWidget::itemOpenRequested, this, &MainWindow::openChapterFile);
@@ -120,6 +126,15 @@ void MainWindow::setupUI()
         statusBar()->showMessage("Project numbering updated", 2000);
         m_projectTree->refreshProject(projectPath);
     });
+    
+    // Connect auto-save manager signals for change indicators
+    connect(m_autoSaveManager.get(), &AutoSaveManager::autoSaveCompleted, 
+            this, [this](int filesSaved) {
+                if (filesSaved > 0) {
+                    updateAllTabIndicators();
+                    statusBar()->showMessage(QString("Auto-saved %1 file(s)").arg(filesSaved), 2000);
+                }
+            });
     
     m_leftPane->addTab(new QWidget(), "Navigator");
     m_leftPane->addTab(new QWidget(), "Characters");
@@ -250,8 +265,18 @@ void MainWindow::setupMenus()
 
 void MainWindow::setupStatusBar()
 {
-    statusBar()->addWidget(new QLabel("Ready"));
-    statusBar()->addPermanentWidget(new QLabel("No project loaded"));
+    // Create status bar with permanent widgets
+    QLabel* readyLabel = new QLabel("Ready");
+    statusBar()->addWidget(readyLabel);
+    
+    // Add permanent project status
+    m_projectStatusLabel = new QLabel("No project loaded");
+    m_projectStatusLabel->setStyleSheet("color: #666; font-style: italic;");
+    statusBar()->addPermanentWidget(m_projectStatusLabel);
+    
+    // Ensure status bar is always visible with minimum height
+    statusBar()->setMinimumHeight(20);
+    statusBar()->setSizeGripEnabled(true);
 }
 
 void MainWindow::setupShortcuts()
@@ -265,10 +290,118 @@ void MainWindow::updateWindowTitle(const QString& projectName)
     if (!projectName.isEmpty()) {
         title += " - " + projectName;
         if (m_projectModified) {
-            title += " *";
+            title += " •"; // Use bullet to indicate unsaved project changes
         }
     }
     setWindowTitle(title);
+}
+
+void MainWindow::updateTabIndicator(EditorWidget* editor, int tabIndex)
+{
+    if (!editor || tabIndex < 0 || tabIndex >= m_centerPane->count()) {
+        return;
+    }
+    
+    QString baseText = QFileInfo(editor->getFilePath()).baseName();
+    if (baseText.isEmpty()) {
+        baseText = "Untitled";
+    }
+    
+    QString tabText;
+    if (editor->hasUnsavedChanges()) {
+        tabText = baseText + " •"; // Add bullet for unsaved changes
+    } else {
+        tabText = baseText;
+    }
+    
+    // Only update if the text actually changed to avoid unnecessary updates
+    if (m_centerPane->tabText(tabIndex) != tabText) {
+        m_centerPane->setTabText(tabIndex, tabText);
+    }
+}
+
+void MainWindow::updateAllTabIndicators()
+{
+    for (int i = 0; i < m_centerPane->count(); ++i) {
+        QWidget* widget = m_centerPane->widget(i);
+        EditorWidget* editor = qobject_cast<EditorWidget*>(widget);
+        if (editor) {
+            updateTabIndicator(editor, i);
+        }
+    }
+}
+
+QString MainWindow::createSafeFileName(const QString& name) const
+{
+    QString safeName = name;
+    // Remove or replace characters that are invalid in filenames
+    safeName.replace(QRegularExpression("[<>:\"/\\|?*]"), "_");
+    safeName.replace(QRegularExpression("\\s+"), "_");
+    safeName = safeName.trimmed();
+    
+    if (safeName.isEmpty()) {
+        safeName = "Untitled";
+    }
+    
+    return safeName;
+}
+
+bool MainWindow::renameProjectFile(const QString& oldPath, const QString& newPath)
+{
+    if (oldPath == newPath) {
+        return true; // No change needed
+    }
+    
+    // Check if the new path already exists
+    if (QFile::exists(newPath)) {
+        QMessageBox::warning(this, "Rename Error", 
+            QString("Cannot rename file: '%1' already exists.").arg(QFileInfo(newPath).fileName()));
+        return false;
+    }
+    
+    // Try to rename the file
+    QFile file(oldPath);
+    if (!file.rename(newPath)) {
+        QMessageBox::warning(this, "Rename Error", 
+            QString("Failed to rename file from '%1' to '%2'.\nError: %3")
+            .arg(QFileInfo(oldPath).fileName())
+            .arg(QFileInfo(newPath).fileName())
+            .arg(file.errorString()));
+        return false;
+    }
+    
+    qDebug() << "Successfully renamed file:" << oldPath << "→" << newPath;
+    return true;
+}
+
+void MainWindow::updateOpenEditorPath(const QString& oldPath, const QString& newPath)
+{
+    // Update the editor's file path if it's currently open
+    if (m_openEditors.contains(oldPath)) {
+        EditorWidget* editor = m_openEditors[oldPath];
+        
+        // Remove from old path mapping
+        m_openEditors.remove(oldPath);
+        
+        // Update editor's internal file path
+        editor->setFilePath(newPath);
+        
+        // Update auto-save manager
+        m_autoSaveManager->updateFilePath(editor, newPath);
+        
+        // Add to new path mapping
+        m_openEditors[newPath] = editor;
+        
+        // Update tab indicator
+        for (int i = 0; i < m_centerPane->count(); ++i) {
+            if (m_centerPane->widget(i) == editor) {
+                updateTabIndicator(editor, i);
+                break;
+            }
+        }
+        
+        qDebug() << "Updated open editor path:" << oldPath << "→" << newPath;
+    }
 }
 
 // Slot implementations
@@ -282,6 +415,7 @@ void MainWindow::newProject()
         if (m_projectManager->createProject(projectPath, projectName)) {
             m_currentProjectPath = projectPath;
             updateWindowTitle(projectName);
+            m_projectStatusLabel->setText(QString("Project: %1").arg(projectName));
             statusBar()->showMessage("Project created successfully", 2000);
             
             // Connect project manager signals
@@ -312,6 +446,7 @@ void MainWindow::openProject()
         m_currentProjectPath = QFileInfo(projectFile).absolutePath();
         QString projectName = QFileInfo(m_currentProjectPath).baseName();
         updateWindowTitle(projectName);
+        m_projectStatusLabel->setText(QString("Project: %1").arg(projectName));
         statusBar()->showMessage("Project opened successfully", 2000);
         
         // Connect project manager signals
@@ -357,6 +492,7 @@ void MainWindow::closeProject()
     m_currentProjectPath.clear();
     m_projectModified = false;
     updateWindowTitle();
+    m_projectStatusLabel->setText("No project loaded");
     statusBar()->showMessage("Project closed", 2000);
 }
 
@@ -408,10 +544,7 @@ void MainWindow::newChapter()
     
     if (ok && !chapterName.isEmpty()) {
         // Clean chapter name for filename
-        QString cleanName = chapterName;
-        cleanName.replace(QRegularExpression("[^a-zA-Z0-9_\\-\\s]"), "");
-        cleanName.replace(QRegularExpression("\\s+"), "_");
-        
+        QString cleanName = createSafeFileName(chapterName);
         QString chapterPath = QDir(m_currentProjectPath).filePath("chapters/" + cleanName + ".md");
         
         // Create new editor
@@ -420,6 +553,17 @@ void MainWindow::newChapter()
         
         // Add initial content
         editor->setContent("# " + chapterName + "\n\nBegin writing here...\n");
+        
+        // Connect content change signal for tab indicators
+        connect(editor, &EditorWidget::contentChanged, this, [this, editor]() {
+            // Find the tab index for this editor
+            for (int i = 0; i < m_centerPane->count(); ++i) {
+                if (m_centerPane->widget(i) == editor) {
+                    updateTabIndicator(editor, i);
+                    break;
+                }
+            }
+        });
         
         // Add to center pane
         int tabIndex = m_centerPane->addTab(editor, chapterName);
@@ -432,6 +576,9 @@ void MainWindow::newChapter()
         
         // Save immediately
         editor->saveToFile(chapterPath);
+        
+        // Update tab indicator after save
+        updateTabIndicator(editor, tabIndex);
         
         // Refresh the project tree to show the new chapter
         m_projectTree->refreshProject(m_currentProjectPath);
@@ -463,6 +610,13 @@ void MainWindow::saveCurrentChapter()
 {
     if (m_currentEditor) {
         if (m_currentEditor->saveToFile(m_currentEditor->getFilePath())) {
+            // Update tab indicator after save
+            for (int i = 0; i < m_centerPane->count(); ++i) {
+                if (m_centerPane->widget(i) == m_currentEditor) {
+                    updateTabIndicator(m_currentEditor, i);
+                    break;
+                }
+            }
             statusBar()->showMessage("Chapter saved", 2000);
         } else {
             QMessageBox::warning(this, "Error", "Failed to save chapter.");
@@ -499,6 +653,7 @@ void MainWindow::selectFont()
 void MainWindow::onProjectOpened(const QString& projectName)
 {
     updateWindowTitle(projectName);
+    m_projectStatusLabel->setText(QString("Project: %1").arg(projectName));
     loadProjectChapters();
 }
 
@@ -509,7 +664,11 @@ void MainWindow::onChapterTabChanged(int index)
         m_currentEditor = qobject_cast<EditorWidget*>(widget);
         
         if (m_currentEditor) {
-            statusBar()->showMessage("Editing: " + m_centerPane->tabText(index), 2000);
+            QString tabText = m_centerPane->tabText(index);
+            // Remove the change indicator for status display
+            QString cleanTabText = tabText;
+            cleanTabText.remove(" •");
+            statusBar()->showMessage("Editing: " + cleanTabText, 2000);
         }
     }
 }
@@ -602,6 +761,17 @@ void MainWindow::openChapterFile(const QString& filePath)
         QFileInfo fileInfo(filePath);
         QString tabName = fileInfo.baseName();
         
+        // Connect content change signal for tab indicators
+        connect(editor, &EditorWidget::contentChanged, this, [this, editor]() {
+            // Find the tab index for this editor
+            for (int i = 0; i < m_centerPane->count(); ++i) {
+                if (m_centerPane->widget(i) == editor) {
+                    updateTabIndicator(editor, i);
+                    break;
+                }
+            }
+        });
+        
         // Add to center pane
         int tabIndex = m_centerPane->addTab(editor, tabName);
         m_centerPane->setCurrentIndex(tabIndex);
@@ -610,6 +780,9 @@ void MainWindow::openChapterFile(const QString& filePath)
         m_openEditors[filePath] = editor;
         m_currentEditor = editor;
         m_autoSaveManager->registerEditor(editor, filePath);
+        
+        // Update tab indicator
+        updateTabIndicator(editor, tabIndex);
         
         statusBar()->showMessage("Opened: " + tabName, 2000);
     } else {
@@ -625,13 +798,11 @@ void MainWindow::onChapterCreatedFromTree(const QString& projectPath, const QStr
         m_currentProjectPath = projectPath;
         QString projectName = QFileInfo(projectPath).baseName();
         updateWindowTitle(projectName);
+        m_projectStatusLabel->setText(QString("Project: %1").arg(projectName));
     }
     
     // Create the chapter using existing logic
-    QString cleanName = chapterName;
-    cleanName.replace(QRegularExpression("[^a-zA-Z0-9_\\-\\s]"), "");
-    cleanName.replace(QRegularExpression("\\s+"), "_");
-    
+    QString cleanName = createSafeFileName(chapterName);
     QString chapterPath = QDir(projectPath).filePath("chapters/" + cleanName + ".md");
     
     // Create new editor
@@ -640,6 +811,17 @@ void MainWindow::onChapterCreatedFromTree(const QString& projectPath, const QStr
     
     // Add initial content
     editor->setContent("# " + chapterName + "\n\nBegin writing here...\n");
+    
+    // Connect content change signal for tab indicators
+    connect(editor, &EditorWidget::contentChanged, this, [this, editor]() {
+        // Find the tab index for this editor
+        for (int i = 0; i < m_centerPane->count(); ++i) {
+            if (m_centerPane->widget(i) == editor) {
+                updateTabIndicator(editor, i);
+                break;
+            }
+        }
+    });
     
     // Add to center pane
     int tabIndex = m_centerPane->addTab(editor, chapterName);
@@ -652,6 +834,9 @@ void MainWindow::onChapterCreatedFromTree(const QString& projectPath, const QStr
     
     // Save immediately
     editor->saveToFile(chapterPath);
+    
+    // Update tab indicator after save
+    updateTabIndicator(editor, tabIndex);
     
     // Refresh the project tree
     m_projectTree->refreshProject(projectPath);
@@ -704,21 +889,108 @@ void MainWindow::onTreeItemRenamed(const QString& oldName, const QString& newNam
 {
     qDebug() << "MainWindow: Item renamed from" << oldName << "to" << newName << "Type:" << itemType;
     
-    // Update any open tabs with the old name
+    // Handle file renaming based on item type
+    if (itemType == ProjectTreeWidget::ChapterItem) {
+        // Rename the actual chapter file
+        if (!filePath.isEmpty() && QFile::exists(filePath)) {
+            QFileInfo oldFileInfo(filePath);
+            QString newFileName = createSafeFileName(newName) + ".md";
+            QString newFilePath = QDir(oldFileInfo.absolutePath()).filePath(newFileName);
+            
+            qDebug() << "Attempting to rename chapter file:" << filePath << "→" << newFilePath;
+            
+            if (renameProjectFile(filePath, newFilePath)) {
+                // Update any open editor
+                updateOpenEditorPath(filePath, newFilePath);
+                
+                // Refresh the project tree to reflect the file change
+                m_projectTree->refreshProject(m_currentProjectPath);
+                
+                statusBar()->showMessage("Chapter renamed: " + oldName + " → " + newName, 2000);
+            } else {
+                // Rename failed, refresh tree to revert the display name
+                m_projectTree->refreshProject(m_currentProjectPath);
+                statusBar()->showMessage("Failed to rename chapter file", 2000);
+            }
+        } else {
+            qDebug() << "Chapter file path is empty or doesn't exist:" << filePath;
+            statusBar()->showMessage("Chapter file not found for renaming", 2000);
+        }
+    } 
+    else if (itemType == ProjectTreeWidget::CharacterItem) {
+        // Handle character file renaming when implemented
+        statusBar()->showMessage("Character renamed: " + oldName + " → " + newName, 2000);
+    }
+    else if (itemType == ProjectTreeWidget::ResearchItem) {
+        // Handle research file renaming
+        if (!filePath.isEmpty() && QFile::exists(filePath)) {
+            QFileInfo oldFileInfo(filePath);
+            QString extension = oldFileInfo.suffix();
+            QString newFileName = createSafeFileName(newName);
+            if (!extension.isEmpty()) {
+                newFileName += "." + extension;
+            }
+            QString newFilePath = QDir(oldFileInfo.absolutePath()).filePath(newFileName);
+            
+            if (renameProjectFile(filePath, newFilePath)) {
+                updateOpenEditorPath(filePath, newFilePath);
+                m_projectTree->refreshProject(m_currentProjectPath);
+                statusBar()->showMessage("Research file renamed: " + oldName + " → " + newName, 2000);
+            } else {
+                m_projectTree->refreshProject(m_currentProjectPath);
+                statusBar()->showMessage("Failed to rename research file", 2000);
+            }
+        }
+    }
+    else {
+        statusBar()->showMessage("Item renamed: " + oldName + " → " + newName, 2000);
+    }
+    
+    // Update any open tabs with the old name (for display purposes)
     for (int i = 0; i < m_centerPane->count(); ++i) {
-        if (m_centerPane->tabText(i) == oldName) {
-            m_centerPane->setTabText(i, newName);
-            qDebug() << "Updated tab text from" << oldName << "to" << newName;
+        QWidget* widget = m_centerPane->widget(i);
+        EditorWidget* editor = qobject_cast<EditorWidget*>(widget);
+        
+        if (editor) {
+            QString currentTabText = m_centerPane->tabText(i);
+            // Remove change indicator to get base name
+            QString baseTabName = currentTabText;
+            baseTabName.remove(" •");
+            
+            if (baseTabName == oldName) {
+                // Update the tab with new name, preserving change indicator if present
+                if (editor->hasUnsavedChanges()) {
+                    m_centerPane->setTabText(i, newName + " •");
+                } else {
+                    m_centerPane->setTabText(i, newName);
+                }
+                qDebug() << "Updated tab text from" << oldName << "to" << newName;
+            }
+        }
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    // Save all files before closing to prevent data loss
+    if (m_autoSaveManager) {
+        m_autoSaveManager->saveAllOnExit();
+    }
+    
+    // Check for unsaved project changes
+    if (m_projectModified) {
+        int ret = QMessageBox::question(this, "Unsaved Project Changes", 
+            "Save project changes before closing?",
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+        
+        if (ret == QMessageBox::Save) {
+            saveProject();
+        } else if (ret == QMessageBox::Cancel) {
+            event->ignore();
+            return;
         }
     }
     
-    // Handle file renaming based on item type
-    if (itemType == ProjectTreeWidget::ChapterItem) {
-        // TODO: Rename the actual chapter file
-        statusBar()->showMessage("Chapter renamed: " + oldName + " → " + newName, 2000);
-    } else if (itemType == ProjectTreeWidget::CharacterItem) {
-        statusBar()->showMessage("Character renamed: " + oldName + " → " + newName, 2000);
-    } else {
-        statusBar()->showMessage("Item renamed: " + oldName + " → " + newName, 2000);
-    }
+    // Accept the close event
+    event->accept();
 }

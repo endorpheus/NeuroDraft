@@ -17,6 +17,8 @@
 #include <QWidget>
 #include <QAction>
 #include <QKeySequence>
+#include <QLabel>
+#include <QCloseEvent>
 #include <memory>
 
 class ProjectManager;
@@ -34,6 +36,9 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+
+protected:
+    void closeEvent(QCloseEvent* event) override;
 
 private slots:
     void newProject();
@@ -68,6 +73,15 @@ private:
     void loadProjectChapters();
     void openChapterFile(const QString& filePath);
     
+    // Change indicator methods
+    void updateTabIndicator(EditorWidget* editor, int tabIndex);
+    void updateAllTabIndicators();
+    
+    // File operations
+    QString createSafeFileName(const QString& name) const;
+    bool renameProjectFile(const QString& oldPath, const QString& newPath);
+    void updateOpenEditorPath(const QString& oldPath, const QString& newPath);
+    
     // Core UI components
     QWidget* m_centralWidget;
     QSplitter* m_mainSplitter;
@@ -85,6 +99,9 @@ private:
     
     // Custom widgets
     ProjectTreeWidget* m_projectTree;
+    
+    // Status bar components
+    QLabel* m_projectStatusLabel;
     
     // Menu actions
     QAction* m_newProjectAction;
